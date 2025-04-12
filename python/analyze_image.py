@@ -1,11 +1,29 @@
 import base64
 import sys
 import json
+import os
 from pathlib import Path
 import openai
 
+# Load API key from config file
+config_path = Path(__file__).parent / "config.json"
+try:
+    with open(config_path, "r") as config_file:
+        config = json.load(config_file)
+        api_key = config.get("openai_api_key")
+        if not api_key:
+            print("Error: API key not found in config file")
+            sys.exit(1)
+except FileNotFoundError:
+    print(f"Error: Config file not found at {config_path}")
+    print("Please create a config.json file with your OpenAI API key")
+    sys.exit(1)
+except json.JSONDecodeError:
+    print(f"Error: Config file at {config_path} is not valid JSON")
+    sys.exit(1)
+
 # Initialize OpenAI client
-client = openai.OpenAI(api_key="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")
+client = openai.OpenAI(api_key=api_key)
 
 def encode_image(image_path):
     """Reads and encodes an image in base64 format"""

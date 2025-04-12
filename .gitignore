@@ -15,3 +15,4 @@ npm-debug.log
 yarn-error.log
 coverage/
 .vscode/
+/python/config.json
