@@ -1,0 +1,17 @@
+# Git Repository Example
+# To add a remote repository:
+# git remote add origin https://github.com/yourusername/sale_backend.git
+# 
+# To verify your remote repository:
+# git remote -v
+#
+# To change an existing remote URL:
+# git remote set-url origin https://github.com/yourusername/new-repo-name.git
+
+/node_modules
+.env
+.DS_Store
+npm-debug.log
+yarn-error.log
+coverage/
+.vscode/
