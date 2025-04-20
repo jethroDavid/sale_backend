@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS monitored_urls (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   active BOOLEAN DEFAULT TRUE,
   status ENUM('active', 'paused', 'error') DEFAULT 'active',
+  failed_attempts INT DEFAULT 0, -- Count of consecutive failed screenshot attempts
   UNIQUE KEY (url)
 );
 
@@ -52,5 +53,6 @@ CREATE TABLE IF NOT EXISTS analysis_results (
   other_insights TEXT,
   notification_sent BOOLEAN DEFAULT FALSE,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  discount_details TEXT,
   FOREIGN KEY (screenshot_id) REFERENCES screenshots(id)
 );

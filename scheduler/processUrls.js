@@ -3,7 +3,9 @@ const path = require('path');
 const { 
   getUrlsToProcess, 
   recordScreenshot, 
-  storeAnalysisResults
+  storeAnalysisResults,
+  deactivateOldUrls,
+  recordFailedScreenshotAttempt
 } = require('../database/db');
 const captureUrlScreenshot = require('../cron/screenshotTask');
 
@@ -54,16 +56,25 @@ async function processUrl(urlData) {
       
       console.log('Processing JSON:', jsonText);
       const analysisResults = JSON.parse(jsonText);
+
+      if (!analysisResults.isEcommerce && !analysisResults.isProductPage) {
+        recordFailedScreenshotAttempt(urlData.id);
+      }
       
       // Store analysis results
       await storeAnalysisResults(screenshotRecord.id, analysisResults);
     } catch (error) {
       console.error('Error parsing analysis output:', error);
       console.debug('Raw output:', analysisOutput);
+      
+      recordFailedScreenshotAttempt(urlData.id);
+
       throw new Error('Failed to parse analysis results');
     }
   } catch (error) {
     console.error(`Error processing URL ${urlData.url}:`, error);
+
+    recordFailedScreenshotAttempt(urlData.id);
   }
 }
 
@@ -74,6 +85,9 @@ async function processUrl(urlData) {
 async function processAllDueUrls() {
   try {
     const urlsToProcess = await getUrlsToProcess();
+
+    console.log('Deactivating old URLs...');
+    deactivateOldUrls();
     
     if (urlsToProcess.length === 0) {
       console.log('No URLs to process at this time');

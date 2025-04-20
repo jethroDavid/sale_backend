@@ -56,13 +56,29 @@ def analyze_image(image_path):
                         Analyze this image and return JSON with the following:
                         - "isEcommerce" (true/false): Is this an eCommerce-related image?
                         - "isProductPage" (true/false): Does the image show a product page?
-                        - "isOnSale" (true/false): Does the image indicate the product is on sale?
+                        - "isOnSale" (true/false): Does the image indicate that this specific product has a reduced price? Look for:
+                        * Crossed-out original price with a lower current price
+                        * Explicit percentage or amount off this specific product
+                        * Product-specific sale tags/badges (like "Sale", "Discount", "Limited offer")
+                        * Price comparison showing savings on this exact product
                         - "confidence" (0-1): How confident are you that the product is on sale?
                         - "productName" (string): If visible, what is the product name?
-                        - "price" (string): If available, what is the price?
+                        - "price" (string): If available, what is the current price?
+                        - "originalPrice" (string): If available, what was the original price before discount?
                         - "currency" (string): If a price is detected, what is the currency?
                         - "discountPercentage" (float): If applicable, what is the discount percentage?
                         - "otherInsights" (string): Any additional useful insights?
+                        - "discountDetails" (string): If applicable, what are the specific terms of this product's discount?
+                        
+                        IMPORTANT: Do NOT mark a product as on sale if you only see:
+                        - Generic site-wide banners (e.g., "Summer sale")
+                        - Promotional codes that apply to the entire cart
+                        - Free shipping offers
+                        - Loyalty program benefits
+                        - Future/upcoming sales
+                        - "New arrival" or similar non-discount indicators
+                        
+                        A product is on sale ONLY if there's clear evidence of a price reduction for THIS SPECIFIC product visible in the image.
                         
                         Respond **only** with valid JSON, no explanations, and no code formatting (no backticks).
                     """},

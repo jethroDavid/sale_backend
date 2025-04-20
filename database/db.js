@@ -46,9 +46,10 @@ async function addMonitoredUrl(url, frequencyHours, email) {
     const userId = userRows[0].id;
     
     // Insert URL or get existing URL ID
+    // Reset last_checked to NULL to ensure it's checked in the next cycle
     const [urlResult] = await connection.execute(
-      'INSERT INTO monitored_urls (url, frequency_hours) VALUES (?, ?) ' +
-      'ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), frequency_hours=?',
+      'INSERT INTO monitored_urls (url, frequency_hours, last_checked, active, failed_attempts, status) VALUES (?, ?, NULL, TRUE, 0, "active") ' +
+      'ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), frequency_hours=?, last_checked=NULL, active=TRUE, failed_attempts=0, status="active"',
       [url, frequencyHours, frequencyHours]
     );
     
@@ -108,9 +109,9 @@ async function getUrlsToProcess() {
  */
 async function recordScreenshot(urlId, screenshotPath) {
   try {
-    // Update the last_checked timestamp
+    // Update the last_checked timestamp and reset failed attempts on success
     await pool.execute(
-      `UPDATE monitored_urls SET last_checked = NOW() WHERE id = ?`,
+      `UPDATE monitored_urls SET last_checked = NOW(), failed_attempts = 0 WHERE id = ?`,
       [urlId]
     );
     
@@ -132,6 +133,39 @@ async function recordScreenshot(urlId, screenshotPath) {
 }
 
 /**
+ * Record a failed screenshot attempt and deactivate URL after 3 failures
+ * @param {number} urlId - The ID of the URL
+ * @returns {Promise<Object>} - Result with updated status
+ */
+async function recordFailedScreenshotAttempt(urlId) {
+  try {
+    // Update last_checked and increment failed_attempts
+    await pool.execute(
+      `UPDATE monitored_urls 
+       SET last_checked = NOW(), 
+           failed_attempts = failed_attempts + 1,
+           active = IF(failed_attempts >= 3, FALSE, TRUE),
+           status = IF(failed_attempts >= 3, 'error', status)
+       WHERE id = ?`,
+      [urlId]
+    );
+    
+    // Get updated URL record
+    const [rows] = await pool.execute(
+      `SELECT id, url, failed_attempts, active, status 
+       FROM monitored_urls 
+       WHERE id = ?`,
+      [urlId]
+    );
+    
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error('Database error:', error);
+    throw error;
+  }
+}
+
+/**
  * Store the analysis results in the database
  * @param {number} screenshotId - The ID of the screenshot
  * @param {Object} analysisResults - The analysis results
@@ -145,13 +179,13 @@ async function storeAnalysisResults(screenshotId, analysisResults) {
       [screenshotId]
     );
     
-    // Insert analysis results
+    // Insert analysis results including discount_details
     const [result] = await pool.execute(
       `INSERT INTO analysis_results (
         screenshot_id, is_ecommerce, is_product_page, is_on_sale, 
         confidence, product_name, price, currency, 
-        discount_percentage, other_insights
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        discount_percentage, other_insights, discount_details
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         screenshotId,
         analysisResults.isEcommerce || false,
@@ -162,7 +196,8 @@ async function storeAnalysisResults(screenshotId, analysisResults) {
         analysisResults.price || null,
         analysisResults.currency || null,
         analysisResults.discountPercentage || null,
-        analysisResults.otherInsights || null
+        analysisResults.otherInsights || null,
+        analysisResults.discountDetails || null
       ]
     );
     
@@ -330,17 +365,145 @@ async function getUserById(id) {
   }
 }
 
+/**
+ * Get all monitored URLs for a specific user
+ * @param {number} userId - The user's ID
+ * @param {string|Date} [fromDate] - Optional start date filter (inclusive)
+ * @param {string|Date} [toDate] - Optional end date filter (inclusive)
+ * @returns {Promise<Array>} - Array of monitored URLs
+ */
+async function getUserMonitoredUrls(userId, fromDate = null, toDate = null) {
+  try {
+    let query = `SELECT mu.id, mu.url, mu.frequency_hours, mu.last_checked, mu.created_at, mu.active, mu.failed_attempts, mu.status
+       FROM monitored_urls mu
+       JOIN user_urls uu ON mu.id = uu.url_id
+       WHERE uu.user_id = ?`;
+    
+    const params = [userId];
+    
+    if (fromDate) {
+      query += ` AND mu.created_at >= ?`;
+      params.push(fromDate);
+    }
+    
+    if (toDate) {
+      query += ` AND mu.created_at <= ?`;
+      params.push(toDate);
+    }
+    
+    query += ` ORDER BY mu.created_at DESC`;
+    
+    const [rows] = await pool.execute(query, params);
+    
+    return rows;
+  } catch (error) {
+    console.error('Database error:', error);
+    throw error;
+  }
+}
+
+async function getUserUrlAnalysisResults(userId, urlId) {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT ar.*, mu.url, mu.frequency_hours, mu.last_checked, ar.created_at, mu.active
+       FROM analysis_results ar
+       JOIN screenshots s ON ar.screenshot_id = s.id
+       JOIN monitored_urls mu ON s.url_id = mu.id
+       JOIN user_urls uu ON mu.id = uu.url_id
+       WHERE uu.user_id = ? AND mu.id = ?
+       ORDER BY ar.created_at DESC
+       LIMIT 6`,
+      [userId, urlId]
+    );
+    
+    return rows;
+  } catch (error) {
+    console.error('Database error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Deactivate monitored URLs that are older than 3 months
+ * @returns {Promise<Object>} - The result of the update operation
+ */
+async function deactivateOldUrls() {
+  try {
+    const [result] = await pool.execute(
+      `UPDATE monitored_urls
+       SET active = FALSE
+       WHERE active = TRUE 
+       AND last_checked IS NOT NULL
+       AND DATEDIFF(NOW(), created_at) > 90`
+    );
+    
+    return {
+      affectedRows: result.affectedRows,
+      message: `Deactivated ${result.affectedRows} old monitored URLs`
+    };
+  } catch (error) {
+    console.error('Database error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a URL association for a specific user
+ * @param {number} userId - The user's ID
+ * @param {number} urlId - The URL ID to delete
+ * @returns {Promise<Object>} - Result of the deletion operation
+ */
+async function deleteUserUrl(userId, urlId) {
+  try {
+    const [result] = await pool.execute(
+      `DELETE FROM user_urls 
+       WHERE user_id = ? AND url_id = ?`,
+      [userId, urlId]
+    );
+    
+    // Check if any other users are monitoring this URL
+    const [remainingUsers] = await pool.execute(
+      `SELECT COUNT(*) as count FROM user_urls WHERE url_id = ?`,
+      [urlId]
+    );
+    
+    // If no other users are monitoring this URL, deactivate it
+    if (remainingUsers[0].count === 0) {
+      await pool.execute(
+        `UPDATE monitored_urls SET active = FALSE WHERE id = ?`,
+        [urlId]
+      );
+    }
+    
+    return {
+      success: result.affectedRows > 0,
+      affectedRows: result.affectedRows,
+      message: result.affectedRows > 0 
+        ? 'URL successfully removed from user monitoring list' 
+        : 'No matching URL found for this user'
+    };
+  } catch (error) {
+    console.error('Database error:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   pool,
   getConnection,
   addMonitoredUrl,
   getUrlsToProcess,
   recordScreenshot,
+  recordFailedScreenshotAttempt,
   storeAnalysisResults,
   markNotificationSent,
   getUnsentSaleNotifications,
   createUser,
   createOrUpdateGoogleUser,
   getUserByEmail,
-  getUserById
+  getUserById,
+  getUserMonitoredUrls,
+  deactivateOldUrls,
+  getUserUrlAnalysisResults,
+  deleteUserUrl
 };

@@ -10,7 +10,7 @@ async function captureUrlScreenshot(url, outputFolder = 'screenshots') {
   console.log(`Taking screenshot of ${url}`);
   
   try {
-    const screenshotPath = await takeScreenshot(url, outputFolder);
+    const screenshotPath = await takeScreenshot(url, outputFolder, 0.6);
     console.log(`✅ Screenshot task completed successfully: ${screenshotPath}`);
     return screenshotPath;
   } catch (error) {

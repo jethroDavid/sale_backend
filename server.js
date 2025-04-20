@@ -2,8 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const registerUrlRouter = require('./api/registerUrl');
-const authRoutes = require('./api/auth'); // Updated path
-const authMiddleware = require('./middleware/auth'); // Import the auth middleware
+const authRoutes = require('./api/auth');
+const userUrlsRouter = require('./api/userUrls'); // Import the new router
+const authMiddleware = require('./middleware/auth');
 const { startAllJobs } = require('./cron/cronManager');
 
 const app = express();
@@ -18,7 +19,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use('/api/register-url', authMiddleware, registerUrlRouter); // Apply auth middleware
+app.use('/api/register-url', authMiddleware, registerUrlRouter);
+app.use('/api/user-urls', authMiddleware, userUrlsRouter); // Add the new route with auth middleware
 app.use('/api/auth', authRoutes);
 
 // Error handling middleware
