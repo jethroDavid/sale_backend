@@ -238,7 +238,7 @@ async function markNotificationSent(analysisId) {
 async function getUnsentSaleNotifications() {
   try {
     const [rows] = await pool.execute(
-      `SELECT ar.*, s.screenshot_path, mu.url
+      `SELECT ar.*, s.screenshot_path, mu.url, mu.id AS url_id
        FROM analysis_results ar
        JOIN screenshots s ON ar.screenshot_id = s.id
        JOIN monitored_urls mu ON s.url_id = mu.id
@@ -488,6 +488,50 @@ async function deleteUserUrl(userId, urlId) {
   }
 }
 
+/**
+ * Get all users monitoring a specific URL
+ * @param {number} urlId - The monitored URL ID
+ * @returns {Promise<Array>} - Array of users with emails
+ */
+async function getUsersMonitoringUrl(urlId) {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT u.id, u.email, u.name
+       FROM users u
+       JOIN user_urls uu ON u.id = uu.user_id
+       WHERE uu.url_id = ?`,
+      [urlId]
+    );
+    
+    return rows;
+  } catch (error) {
+    console.error('Database error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Deactivate a monitored URL
+ * @param {number} urlId - The URL ID to deactivate
+ * @returns {Promise<Object>} - Result of the update operation
+ */
+async function deactivateMonitoredUrl(urlId) {
+  try {
+    const [result] = await pool.execute(
+      `UPDATE monitored_urls SET active = FALSE, status = 'paused' WHERE id = ?`,
+      [urlId]
+    );
+    
+    return {
+      success: result.affectedRows > 0,
+      message: `URL with ID ${urlId} has been deactivated`
+    };
+  } catch (error) {
+    console.error('Database error:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   pool,
   getConnection,
@@ -505,5 +549,7 @@ module.exports = {
   getUserMonitoredUrls,
   deactivateOldUrls,
   getUserUrlAnalysisResults,
-  deleteUserUrl
+  deleteUserUrl,
+  getUsersMonitoringUrl,
+  deactivateMonitoredUrl
 };

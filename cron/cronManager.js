@@ -17,20 +17,21 @@ const notificationJob = cron.schedule('*/10 * * * *', async () => {
 // Start all jobs
 function startAllJobs() {
   urlProcessingJob.start();
-  // notificationJob.start();
+  notificationJob.start();
   console.log('All scheduled jobs started');
 
     // Run the jobs immediately for testing
     (async () => {
       console.log('Running URL processing job immediately for testing...');
       await processAllDueUrls();
+      await processUnsentNotifications();
     })();
 }
 
 // Stop all jobs
 function stopAllJobs() {
   urlProcessingJob.stop();
-  // notificationJob.stop();
+  notificationJob.stop();
   console.log('All scheduled jobs stopped');
 }
 
