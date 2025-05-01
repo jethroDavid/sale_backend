@@ -1,12 +1,12 @@
 const { execSync } = require('child_process');
 const path = require('path');
 const { 
-  getUrlsToProcess, 
-  recordScreenshot, 
-  storeAnalysisResults,
-  deactivateOldUrls,
-  recordFailedScreenshotAttempt
-} = require('../database/db');
+  getAvailabilityUrlsToProcess,
+  recordAvailabilityScreenshot,
+  storeAvailabilityResults,
+  deactivateOldAvailabilityUrls,
+  recordFailedAvailabilityScreenshotAttempt
+} = require('../database/availabilityDb');
 const captureUrlScreenshot = require('../cron/screenshotTask');
 
 /**
@@ -23,14 +23,14 @@ async function processUrl(urlData) {
     
     // Record screenshot in database
     console.log(`Recording screenshot: ${screenshotPath}`, urlData, urlData.id, screenshotPath);
-    const screenshotRecord = await recordScreenshot(urlData.id, screenshotPath);
+    const screenshotRecord = await recordAvailabilityScreenshot(urlData.id, screenshotPath);
     
     // Resolve the correct path for the screenshot
     const resolvedScreenshotPath = path.resolve(__dirname, '../screenshots', path.basename(screenshotPath));
 
     // Run Python analysis on the screenshot
     console.log(`Analyzing screenshot: ${resolvedScreenshotPath}`);
-    const pythonScript = path.resolve(__dirname, '../python/analyze_image.py');
+    const pythonScript = path.resolve(__dirname, '../python/analyze_availability_image.py');
     const analysisOutput = execSync(`python "${pythonScript}" "${resolvedScreenshotPath}"`, { 
       encoding: 'utf8',
       maxBuffer: 1024 * 1024, // 1MB buffer for larger outputs
@@ -58,23 +58,23 @@ async function processUrl(urlData) {
       const analysisResults = JSON.parse(jsonText);
 
       if (!analysisResults.isProductPage) {
-        recordFailedScreenshotAttempt(urlData.id);
+        recordFailedAvailabilityScreenshotAttempt(urlData.id);
       }
       
       // Store analysis results
-      await storeAnalysisResults(screenshotRecord.id, analysisResults);
+      await storeAvailabilityResults(screenshotRecord.id, analysisResults);
     } catch (error) {
       console.error('Error parsing analysis output:', error);
       console.debug('Raw output:', analysisOutput);
       
-      recordFailedScreenshotAttempt(urlData.id);
+      recordFailedAvailabilityScreenshotAttempt(urlData.id);
 
       throw new Error('Failed to parse analysis results');
     }
   } catch (error) {
     console.error(`Error processing URL ${urlData.url}:`, error);
 
-    recordFailedScreenshotAttempt(urlData.id);
+    recordFailedAvailabilityScreenshotAttempt(urlData.id);
   }
 }
 
@@ -82,12 +82,12 @@ async function processUrl(urlData) {
  * Process all URLs that need to be checked
  * @returns {Promise<void>}
  */
-async function processAllDueUrls() {
+async function processAllAvailabilityDueUrls() {
   try {
-    const urlsToProcess = await getUrlsToProcess();
+    const urlsToProcess = await getAvailabilityUrlsToProcess();
 
     console.log('Deactivating old URLs...');
-    deactivateOldUrls();
+    deactivateOldAvailabilityUrls();
     
     if (urlsToProcess.length === 0) {
       console.log('No URLs to process at this time');
@@ -109,7 +109,7 @@ async function processAllDueUrls() {
 
 // If this file is run directly
 if (require.main === module) {
-  processAllDueUrls()
+  processAllAvailabilityDueUrls()
     .then(() => process.exit(0))
     .catch(error => {
       console.error(error);
@@ -117,4 +117,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { processAllDueUrls };
+module.exports = { processAllAvailabilityDueUrls };

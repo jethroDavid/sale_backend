@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:4200', 'http://localhost:8100', 'http://192.168.254.138:8100', 'capacitor://localhost', 'http://localhost'], 
+  origin: ['http://localhost:4200', 'http://localhost:8100', 'http://localhost:8101', 'http://192.168.254.138:8100', 'capacitor://localhost', 'http://localhost'], 
   credentials: true
 }));
 app.use(express.json());

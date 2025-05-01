@@ -1,11 +1,13 @@
 const cron = require('node-cron');
 const { processAllDueUrls } = require('../scheduler/processUrls');
+const { processAllAvailabilityDueUrls } = require('../scheduler/processAvailabilityUrls');
 const { processUnsentNotifications } = require('../notifications/emailSender');
 
 // Schedule URL processing every 5 minutes
 const urlProcessingJob = cron.schedule('*/5 * * * *', async () => {
   console.log('Running scheduled URL processing job...');
   await processAllDueUrls();
+  await processAllAvailabilityDueUrls();
 });
 
 // Schedule notification processing every 10 minutes
@@ -23,8 +25,9 @@ function startAllJobs() {
     // Run the jobs immediately for testing
     (async () => {
       console.log('Running URL processing job immediately for testing...');
-      await processAllDueUrls();
-      await processUnsentNotifications();
+      // await processAllDueUrls();
+      // await processUnsentNotifications();
+      await processAllAvailabilityDueUrls();
     })();
 }
 
