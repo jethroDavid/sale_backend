@@ -1,5 +1,6 @@
 const { execSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const { 
   getUrlsToProcess, 
   recordScreenshot, 
@@ -10,23 +11,41 @@ const {
 const captureUrlScreenshot = require('../cron/screenshotTask');
 
 /**
+ * Delete screenshot file if it exists
+ * @param {string} screenshotPath - Path to the screenshot file
+ */
+function deleteScreenshot(screenshotPath) {
+  if (screenshotPath && fs.existsSync(screenshotPath)) {
+    try {
+      fs.unlinkSync(screenshotPath);
+      console.log(`Deleted screenshot: ${screenshotPath}`);
+    } catch (deleteError) {
+      console.error(`Error deleting screenshot ${screenshotPath}:`, deleteError);
+    }
+  }
+}
+
+/**
  * Process a single URL - take screenshot and analyze it
  * @param {Object} urlData - URL record from database
  * @returns {Promise<void>}
  */
 async function processUrl(urlData) {
+  let screenshotPath = null;
+  let resolvedScreenshotPath = null;
+  
   try {
     console.log(`Processing URL: ${urlData.url}`);
     
     // Take screenshot
-    const screenshotPath = await captureUrlScreenshot(urlData.url);
+    screenshotPath = await captureUrlScreenshot(urlData.url);
     
     // Record screenshot in database
     console.log(`Recording screenshot: ${screenshotPath}`, urlData, urlData.id, screenshotPath);
     const screenshotRecord = await recordScreenshot(urlData.id, screenshotPath);
     
     // Resolve the correct path for the screenshot
-    const resolvedScreenshotPath = path.resolve(__dirname, '../screenshots', path.basename(screenshotPath));
+    resolvedScreenshotPath = path.resolve(__dirname, '../screenshots', path.basename(screenshotPath));
 
     // Run Python analysis on the screenshot
     console.log(`Analyzing screenshot: ${resolvedScreenshotPath}`);
@@ -70,11 +89,16 @@ async function processUrl(urlData) {
       recordFailedScreenshotAttempt(urlData.id);
 
       throw new Error('Failed to parse analysis results');
+    } finally {
+      // Delete screenshot file after processing, regardless of success or failure
+      deleteScreenshot(resolvedScreenshotPath);
     }
   } catch (error) {
     console.error(`Error processing URL ${urlData.url}:`, error);
-
     recordFailedScreenshotAttempt(urlData.id);
+    
+    // Make sure to delete screenshot even if overall processing failed
+    deleteScreenshot(resolvedScreenshotPath);
   }
 }
 

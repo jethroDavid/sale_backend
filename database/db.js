@@ -85,13 +85,15 @@ async function addMonitoredUrl(url, frequencyHours, email) {
 async function getUrlsToProcess() {
   try {
     const [rows] = await pool.execute(
-      `SELECT id, url, frequency_hours, last_checked 
-       FROM monitored_urls 
-       WHERE active = TRUE AND (
-         last_checked IS NULL OR 
-         TIMESTAMPDIFF(HOUR, last_checked, NOW()) >= frequency_hours
+      `SELECT mu.id, mu.url, mu.frequency_hours, mu.last_checked 
+       FROM monitored_urls mu
+       JOIN user_urls uu ON mu.id = uu.url_id
+       WHERE mu.active = TRUE AND (
+         mu.last_checked IS NULL OR 
+         TIMESTAMPDIFF(HOUR, mu.last_checked, NOW()) >= mu.frequency_hours
        )
-       LIMIT 10`
+       GROUP BY mu.id
+       LIMIT 100`
     );
     
     return rows;

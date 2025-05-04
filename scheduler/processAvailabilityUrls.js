@@ -1,5 +1,6 @@
 const { execSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const { 
   getAvailabilityUrlsToProcess,
   recordAvailabilityScreenshot,
@@ -8,6 +9,21 @@ const {
   recordFailedAvailabilityScreenshotAttempt
 } = require('../database/availabilityDb');
 const captureUrlScreenshot = require('../cron/screenshotTask');
+
+/**
+ * Delete screenshot file if it exists
+ * @param {string} screenshotPath - Path to the screenshot file
+ */
+function deleteScreenshot(screenshotPath) {
+  if (screenshotPath && fs.existsSync(screenshotPath)) {
+    try {
+      fs.unlinkSync(screenshotPath);
+      console.log(`Deleted screenshot: ${screenshotPath}`);
+    } catch (deleteError) {
+      console.error(`Error deleting screenshot ${screenshotPath}:`, deleteError);
+    }
+  }
+}
 
 /**
  * Process a single URL - take screenshot and analyze it
@@ -70,11 +86,17 @@ async function processUrl(urlData) {
       recordFailedAvailabilityScreenshotAttempt(urlData.id);
 
       throw new Error('Failed to parse analysis results');
+    } finally {
+      // Delete screenshot file after processing, regardless of success or failure
+      deleteScreenshot(resolvedScreenshotPath);
     }
   } catch (error) {
     console.error(`Error processing URL ${urlData.url}:`, error);
 
     recordFailedAvailabilityScreenshotAttempt(urlData.id);
+  } finally {
+    // Delete screenshot file after processing, regardless of success or failure
+    deleteScreenshot(resolvedScreenshotPath);
   }
 }
 

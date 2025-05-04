@@ -2,12 +2,12 @@ const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
-const { 
-  getUnsentSaleNotifications, 
-  markNotificationSent, 
-  getUsersMonitoringUrl,
-  deactivateMonitoredUrl 
-} = require('../database/db');
+const {
+  getUnsentAvailabilityNotifications, 
+  markAvailabilityNotificationSent,
+  getUsersMonitoringAvailabilityUrl,
+  deactivateAvailabilityUrl
+} = require('../database/availabilityDb');
 
 // Configure Nodemailer transporter
 const transporter = nodemailer.createTransport({
@@ -54,19 +54,15 @@ async function sendSaleEmail(saleData, userEmail, userName = '') {
     const {
       url,
       product_name,
-      price,
-      currency,
-      discount_percentage,
-      confidence,
-      screenshot_path
+      stock_status,
     } = saleData;
     
-    const subject = `SALE ALERT: ${product_name || 'Product'} on sale!`;
+    const subject = `AVAILABILITY ALERT: ${product_name || 'Product'} is now available!`;
     
     // Get a random donation message and button text
     const donation = getRandomDonationMessage();
     
-    // Build email HTML with styling similar to the app
+    // Build email HTML with styling similar to the checker page
     const html = `
       <!DOCTYPE html>
       <html>
@@ -75,54 +71,58 @@ async function sendSaleEmail(saleData, userEmail, userName = '') {
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>${subject}</title>
         <style>
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f5f7fa; color: #333; }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: linear-gradient(135deg, #f3f7fc 0%, #dce9fa 100%); color: #333; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(90deg, #3880ff, #3dc2ff); padding: 20px; border-radius: 24px 24px 0 0; }
-          .title { color: white; font-size: 28px; font-weight: 800; margin: 0; text-align: center; }
-          .subtitle { color: rgba(255,255,255,0.9); font-size: 18px; text-align: center; margin-top: 10px; }
-          .card { background: white; border-radius: 0 0 24px 24px; padding: 30px; box-shadow: 0 12px 28px rgba(0, 0, 0, 0.1); }
+          .header { background: linear-gradient(90deg, #4a3f9f, #ff577f); padding: 20px; border-radius: 24px 24px 0 0; position: relative; overflow: hidden; }
+          .header::before { content: ''; position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; border-radius: 50%; background: linear-gradient(45deg, rgba(56, 128, 255, 0.15), rgba(61, 194, 255, 0.15)); z-index: 0; }
+          .title { color: white; font-size: 28px; font-weight: 800; margin: 0; text-align: center; position: relative; }
+          .subtitle { color: rgba(255,255,255,0.9); font-size: 18px; text-align: center; margin-top: 10px; position: relative; }
+          .card { background: white; border-radius: 0 0 24px 24px; padding: 30px; box-shadow: 0 12px 28px rgba(0, 0, 0, 0.1); position: relative; }
+          .card::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 6px; background: linear-gradient(90deg, #3dc2ff, #5260ff); }
           .product-info { margin-bottom: 25px; }
-          .product-name { font-size: 22px; font-weight: 700; margin-bottom: 15px; color: #333; }
-          .info-item { display: flex; margin-bottom: 15px; align-items: center; }
+          .product-name { font-size: 22px; font-weight: 700; margin-bottom: 15px; color: #333; position: relative; }
+          .product-name::after { content: ''; position: absolute; bottom: -10px; left: 0; width: 60px; height: 4px; background: linear-gradient(90deg, #3dc2ff, #5260ff); border-radius: 4px; }
+          .info-item { display: flex; margin-bottom: 15px; align-items: center; background: rgba(243, 247, 252, 0.8); padding: 12px 16px; border-radius: 14px; }
           .info-label { font-weight: 600; width: 120px; color: #777; }
           .info-value { font-weight: 700; color: #333; }
-          .price-value { font-size: 20px; color: #3880ff; }
-          .discount { background: #ffece8; color: #ff4961; padding: 5px 10px; border-radius: 10px; font-weight: 700; }
-          .confidence { background: #e0f7ff; color: #0cd1e8; padding: 5px 10px; border-radius: 10px; font-weight: 700; }
-          .cta-button { display: block; background: linear-gradient(90deg, #3880ff, #3dc2ff); color: white !important; text-decoration: none; padding: 16px 20px; border-radius: 16px; font-weight: 700; text-align: center; margin-top: 25px; font-size: 16px; }
-          .footer { margin-top: 20px; text-align: center; color: #777; font-size: 14px; }
+          .status-badge { background: #e0f7ff; color: #0cd1e8; padding: 8px 14px; border-radius: 10px; font-weight: 700; display: inline-block; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12); }
+          .cta-button { display: block; background: linear-gradient(90deg, #4a3f9f, #ff577f); color: white !important; text-decoration: none; padding: 16px 20px; border-radius: 14px; font-weight: 700; text-align: center; margin-top: 25px; font-size: 16px; box-shadow: 0 6px 16px rgba(56, 128, 255, 0.35); transition: all 0.3s ease; }
+          .cta-button:hover { box-shadow: 0 8px 20px rgba(56, 128, 255, 0.45); transform: translateY(-3px); }
+          .footer { margin-top: 30px; text-align: center; color: #777; font-size: 14px; padding: 20px; background: rgba(243, 247, 252, 0.8); border-radius: 14px; }
+          @media (max-width: 500px) {
+            .header, .card { border-radius: 16px; }
+            .title { font-size: 24px; }
+            .subtitle { font-size: 16px; }
+            .product-name { font-size: 20px; }
+          }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="header">
-            <h1 class="title">Hot Deal Found! 🔥</h1>
-            <p class="subtitle">Hey${userName ? ' ' + userName : ' there'}! We spotted a great deal you won't want to miss!</p>
+            <h1 class="title">Great News! It's Available!</h1>
+            <p class="subtitle">Hey${userName ? ' ' + userName : ' there'}! That item you've been waiting for just came back in stock!</p>
           </div>
           <div class="card">
             <div class="product-info">
               <h2 class="product-name">${product_name || 'Product'}</h2>
               
               <div class="info-item">
-                <span class="info-label">Price:</span>
-                <span class="info-value price-value">${currency || ''}${price || 'Unknown'}</span>
-              </div>
-              
-              <div class="info-item">
-                <span class="info-label">Discount:</span>
-                <span class="info-value"><span class="discount">${discount_percentage ? Math.round(discount_percentage) + '%' : 'N/A'}</span></span>
+                <span class="info-label">Status:</span>
+                <span class="info-value">Back in Stock! 🎉</span>
               </div>
             </div>
             
-            <a href="${url}" class="cta-button">Grab This Deal Now!</a>
+            <a href="${url}" class="cta-button">Grab Yours Now!</a>
             
             <div class="footer">
-              <p>Thanks for using SaleSavie to track your deals! We're thrilled we could help you save some money.</p>
+              <p>You're getting this heads-up because you asked us to watch this product for you. 
+              Hope this helps you snag what you've been waiting for!</p>
             </div>
             
             <div style="margin-top: 25px; padding: 15px; background: #fff8e1; border-radius: 12px; border-left: 4px solid #ffb300; text-align: center;">
               <p style="font-size: 15px; margin-bottom: 15px; color: #5f4b32;">
-                <strong>Love our deal alerts?</strong> ${donation.message}
+                <strong>Love our product alerts?</strong> ${donation.message}
               </p>
               <a href="https://www.paypal.com/ncp/payment/X53JZ9ZFAW79S" style="display: inline-block; background: #0070ba; color: white; padding: 10px 18px; border-radius: 20px; text-decoration: none; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
                 ${donation.buttonText}
@@ -159,9 +159,9 @@ async function sendSaleEmail(saleData, userEmail, userName = '') {
  * Process unsent sale notifications
  * @returns {Promise<void>}
  */
-async function processUnsentNotifications() {
+async function processUnsentAvailabilityNotifications() {
   try {
-    const notifications = await getUnsentSaleNotifications();
+    const notifications = await getUnsentAvailabilityNotifications();
     
     if (notifications.length === 0) {
       console.log('No unsent notifications');
@@ -173,11 +173,11 @@ async function processUnsentNotifications() {
     for (const notification of notifications) {
       // Get all users monitoring this URL
       const urlId = notification.url_id;
-      const users = await getUsersMonitoringUrl(urlId);
+      const users = await getUsersMonitoringAvailabilityUrl(urlId);
       
       if (users.length === 0) {
         console.log(`No users monitoring URL ID ${urlId}`);
-        await markNotificationSent(notification.id);
+        await markAvailabilityNotificationSent(notification.id);
         continue;
       }
       
@@ -193,10 +193,10 @@ async function processUnsentNotifications() {
       
       if (allEmailsSent) {
         // Mark as sent
-        await markNotificationSent(notification.id);
+        await markAvailabilityNotificationSent(notification.id);
         
         // Deactivate the monitored URL
-        await deactivateMonitoredUrl(urlId);
+        await deactivateAvailabilityUrl(urlId);
         console.log(`Deactivated URL ID ${urlId} after sending notifications`);
       }
     }
@@ -209,7 +209,7 @@ async function processUnsentNotifications() {
 
 // If this file is run directly
 if (require.main === module) {
-  processUnsentNotifications()
+  processUnsentAvailabilityNotifications()
     .then(() => process.exit(0))
     .catch(error => {
       console.error(error);
@@ -217,4 +217,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { processUnsentNotifications };
+module.exports = { processUnsentAvailabilityNotifications };
