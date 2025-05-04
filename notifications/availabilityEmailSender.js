@@ -1,6 +1,8 @@
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
+const { SESClient, SendRawEmailCommand } = require('@aws-sdk/client-ses');
+const { fromEnv } = require('@aws-sdk/credential-providers');
 require('dotenv').config();
 const {
   getUnsentAvailabilityNotifications, 
@@ -9,16 +11,54 @@ const {
   deactivateAvailabilityUrl
 } = require('../database/availabilityDb');
 
-// Configure Nodemailer transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_SMTP_HOST || 'smtp.gmail.com',
-  port: process.env.EMAIL_SMTP_PORT || 587,
-  secure: process.env.EMAIL_SMTP_SECURE === 'true', // true for 465, false for other ports
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD
-  }
+// Create SES client with AWS SDK v3
+const sesClient = new SESClient({
+  region: process.env.AWS_SES_REGION || 'us-east-1',
+  credentials: fromEnv()
 });
+
+// Custom transport that works with AWS SDK v3
+const sesTransport = {
+  name: 'SESv3Transport',
+  version: '1.0.0',
+  send: async (mail, callback) => {
+    try {
+      // Get the raw message from the nodemailer mail object
+      const message = await mail.message.build();
+      
+      // Prepare the parameters for SES SendRawEmail
+      const params = {
+        RawMessage: {
+          Data: message
+        },
+        Source: mail.data.from,
+        // Optional fields if they're specified
+        ...(mail.data.ses && mail.data.ses.Source && { Source: mail.data.ses.Source }),
+        ...(mail.data.ses && mail.data.ses.ConfigurationSetName && { 
+          ConfigurationSetName: mail.data.ses.ConfigurationSetName 
+        })
+      };
+
+      // Send the raw email using the SES client
+      const command = new SendRawEmailCommand(params);
+      const result = await sesClient.send(command);
+
+      callback(null, {
+        messageId: result.MessageId,
+        envelope: mail.data.envelope || {
+          from: mail.data.from,
+          to: mail.data.to
+        }
+      });
+    } catch (error) {
+      console.error('Error sending email via SES:', error);
+      callback(error);
+    }
+  }
+};
+
+// Configure Nodemailer to use our custom SES transport
+const transporter = nodemailer.createTransport(sesTransport);
 
 /**
  * Generate a random quirky donation message and button text
@@ -143,6 +183,33 @@ async function sendSaleEmail(saleData, userEmail, userName = '') {
     };
 
     console.log(`Sending email to ${userEmail}`);
+    
+    // Ensure we have valid email addresses
+    const validateEmail = (email) => {
+      return String(email)
+        .toLowerCase()
+        .match(
+          /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
+        );
+    };
+    
+    // Validate the from email
+    const sourceEmail = process.env.EMAIL_FROM || 'noreply@example.com';
+    if (!validateEmail(sourceEmail)) {
+      console.error(`Invalid from email format: ${sourceEmail}`);
+      throw new Error(`Invalid email format for sender: ${sourceEmail}`);
+    }
+    
+    // Validate the recipient email
+    if (!validateEmail(userEmail)) {
+      console.error(`Invalid recipient email format: ${userEmail}`);
+      throw new Error(`Invalid email format for recipient: ${userEmail}`);
+    }
+    
+    // When using AWS SES, we need to explicitly set the Source parameter
+    mailOptions.ses = {
+      Source: sourceEmail
+    };
     
     // Send email using Nodemailer
     const info = await transporter.sendMail(mailOptions);

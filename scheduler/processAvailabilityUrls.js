@@ -88,7 +88,7 @@ async function processUrl(urlData) {
       throw new Error('Failed to parse analysis results');
     } finally {
       // Delete screenshot file after processing, regardless of success or failure
-      deleteScreenshot(resolvedScreenshotPath);
+      // deleteScreenshot(resolvedScreenshotPath);
     }
   } catch (error) {
     console.error(`Error processing URL ${urlData.url}:`, error);
@@ -96,7 +96,7 @@ async function processUrl(urlData) {
     recordFailedAvailabilityScreenshotAttempt(urlData.id);
   } finally {
     // Delete screenshot file after processing, regardless of success or failure
-    deleteScreenshot(resolvedScreenshotPath);
+    // deleteScreenshot(resolvedScreenshotPath);
   }
 }
 
